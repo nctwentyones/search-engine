@@ -5,8 +5,8 @@ from langchain_community.llms import Ollama
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import OllamaEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 import pandas as pd
 import shutil
 import os
@@ -29,10 +29,10 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Mengambil alamat Ollama dari environment variable yang kita set di docker-compose
 OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 
-embeddings = OllamaEmbeddings(model="llama3", base_url=OLLAMA_BASE_URL)
-llm = Ollama(model="llama3", base_url=OLLAMA_BASE_URL)
+embeddings = OllamaEmbeddings(model="llama3.2", base_url=OLLAMA_BASE_URL)
+llm = Ollama(model="llama3.2", base_url=OLLAMA_BASE_URL)
 
-vector_db = None
+vector_db = Chroma(persist_directory="uploads", embedding_function=embeddings)
 
 @app.get("/files")
 async def list_files():

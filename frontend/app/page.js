@@ -51,7 +51,7 @@ export default function GeminiClone() {
           await fetchFiles();
           setIsUploading(false);
           setUploadStatus("");
-        }, 2000);
+        }, 3000);
       } else {
         throw new Error("Gagal");
       }
