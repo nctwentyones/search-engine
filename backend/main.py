@@ -29,7 +29,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
 
-embeddings = OllamaEmbeddings(model="llama3.2", base_url=OLLAMA_BASE_URL)
+embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url=OLLAMA_BASE_URL, num_thread=4)
 llm = Ollama(model="llama3.2", base_url=OLLAMA_BASE_URL)
 
 vector_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
