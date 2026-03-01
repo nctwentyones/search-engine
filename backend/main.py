@@ -13,7 +13,6 @@ import os
 
 app = FastAPI()
 
-# Buka akses untuk Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -22,23 +21,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+CHROMA_PATH = "chroma_db"
 os.makedirs("uploads", exist_ok=True)
-# INI PENTING: Membuat folder 'uploads' bisa diakses dari browser (seperti Google Drive)
+os.makedirs(CHROMA_PATH, exist_ok=True)
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# Mengambil alamat Ollama dari environment variable yang kita set di docker-compose
-OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
 
 embeddings = OllamaEmbeddings(model="llama3.2", base_url=OLLAMA_BASE_URL)
 llm = Ollama(model="llama3.2", base_url=OLLAMA_BASE_URL)
 
-vector_db = Chroma(persist_directory="uploads", embedding_function=embeddings)
+vector_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
 @app.get("/files")
 async def list_files():
-    # Mengambil daftar file yang sudah diupload
-    files = os.listdir("uploads")
-    return {"files": files}
+    allowed_extensions = {".pdf", ".txt", ".xlsx", ".docx"}
+    all_files = os.listdir("uploads")
+    filtered_files = [
+        f for f in all_files 
+        if os.path.isfile(os.path.join("uploads", f)) and 
+           os.path.splitext(f)[1].lower() in allowed_extensions
+    ]
+    
+    return {"files": filtered_files}
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -57,32 +63,29 @@ async def upload_file(file: UploadFile = File(...)):
     else:
         return {"error": "Format tidak didukung. Gunakan PDF, TXT, atau Excel."}
     
-    # Tambahkan metadata nama file agar AI tahu sumbernya
     for doc in docs:
         doc.metadata["source"] = file.filename
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     splits = text_splitter.split_documents(docs)
     
-    global vector_db
-    if vector_db is None:
-        vector_db = Chroma.from_documents(documents=splits, embedding=embeddings)
-    else:
-        vector_db.add_documents(splits)
+    vector_db.add_documents(splits)
         
     return {"message": f"File {file.filename} berhasil diunggah dan dipelajari!"}
 
 @app.post("/ask")
 async def ask_ai(question: dict):
     tanya = question.get("query")
-    if vector_db is None:
-        return {"answer": "Belum ada dokumen. Silakan upload file dulu.", "sources": []}
+    try:
+        docs = vector_db.similarity_search(tanya, k=3)
+    except Exception:
+        return {"answer": "Database belum siap atau kosong. Silakan upload file dulu.", "sources": []}
+
+    if not docs:
+        return {"answer": "Saya tidak menemukan informasi terkait di dokumen yang ada.", "sources": []}
     
-    # Cari 3 teks paling mirip
-    docs = vector_db.similarity_search(tanya, k=3)
     konteks = "\n".join([d.page_content for d in docs])
     
-    # Ambil nama file sumber (menghilangkan duplikat)
     sumber_file = list(set([d.metadata.get("source", "Tidak diketahui") for d in docs]))
     
     prompt = f"Gunakan data berikut untuk menjawab pertanyaan.\n\nData Perusahaan:\n{konteks}\n\nPertanyaan: {tanya}\nJawaban:"

@@ -1,0 +1,7 @@
+services:
+  frontend:
+    build: .
+    container_name: company_frontend
+    ports:
+      - "${PORT}:${PORT}"
+    env_file: .env

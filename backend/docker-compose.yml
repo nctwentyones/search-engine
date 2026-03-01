@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: .
+    container_name: company_backend
+    ports:
+      - "${PORT}:${PORT}"
+    env_file: .env
+    volumes:
+      - ./uploads:/app/uploads
+      - ./chroma_db:/app/chroma_db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
