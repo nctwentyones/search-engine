@@ -1,5 +1,4 @@
 services:
-  # --- OLLAMA (Otak AI) ---
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -8,7 +7,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
-  # --- BACKEND (Python FastAPI) ---
+  
   backend:
     build: ./backend
     container_name: company_backend
@@ -21,7 +20,7 @@ services:
     depends_on:
       - ollama
 
-  # --- FRONTEND (Next.js UI) ---
+
   frontend:
     build: ./frontend
     container_name: company_frontend
@@ -32,6 +31,5 @@ services:
     depends_on:
       - backend
 
-# INI BAGIAN YANG TADI KURANG (PENTING!)
 volumes:
   ollama_data:

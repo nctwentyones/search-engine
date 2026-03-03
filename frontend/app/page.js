@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export default function GeminiClone() {
   const [chat, setChat] = useState([]);
@@ -7,9 +7,17 @@ export default function GeminiClone() {
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState([]);
   
-  // State baru untuk progress upload
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
+  const chatEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chat, loading]);
 
   const fetchFiles = async () => {
     try {
@@ -19,7 +27,7 @@ export default function GeminiClone() {
         setFiles(data.files);
       }
     } catch (err) {
-      console.error("Gagal mengambil daftar file");
+      console.error("Gagal mengambil file");
     }
   };
 
@@ -34,7 +42,6 @@ export default function GeminiClone() {
     const formData = new FormData();
     formData.append("file", file);
     
-    // Mulai indikator loading upload
     setIsUploading(true);
     setUploadStatus(`Mengunggah ${file.name}...`);
 
@@ -56,7 +63,7 @@ export default function GeminiClone() {
         throw new Error("Gagal");
       }
     } catch (error) {
-      alert("Gagal mengunggah file.");
+      alert("Gagal upload file.");
       setIsUploading(false);
       setUploadStatus("");
     }
@@ -86,7 +93,7 @@ export default function GeminiClone() {
       
       setChat([...newChat, { role: "ai", text: answerText }]);
     } catch (error) {
-      setChat([...newChat, { role: "ai", text: "Maaf, gagal terhubung ke server AI." }]);
+      setChat([...newChat, { role: "ai", text: "Maaf, gagal terhubung ke server." }]);
     }
     setLoading(false);
   }
@@ -95,7 +102,7 @@ export default function GeminiClone() {
     <div className="flex h-screen bg-[#131314] text-white font-sans text-sm md:text-base">
       {/* Sidebar - Ala Google Drive */}
       <div className="w-64 bg-[#1e1f20] p-4 flex flex-col gap-4 border-r border-gray-800">
-        <h2 className="text-xl font-bold px-2 text-gray-200">Data Perusahaan</h2>
+        <h2 className="text-xl font-bold px-2 text-gray-200">Data Search - Engine</h2>
         
         <div className="flex flex-col gap-2">
           <label className={`relative overflow-hidden ${isUploading ? 'bg-gray-700' : 'bg-[#1a73e8] hover:bg-blue-600'} cursor-pointer text-center py-2.5 rounded-full text-sm font-semibold transition-all`}>
@@ -125,7 +132,7 @@ export default function GeminiClone() {
         </div>
         
         <div className="mt-4 flex-1 overflow-y-auto">
-          <h3 className="text-xs font-semibold text-gray-500 px-2 mb-2 uppercase tracking-wider">File Tersimpan</h3>
+          <h3 className="text-xs font-semibold text-gray-500 px-2 mb-2 uppercase tracking-wider">File Saved</h3>
           <ul className="flex flex-col gap-1">
             {files.map((file, idx) => (
               <li key={idx}>
@@ -153,9 +160,9 @@ export default function GeminiClone() {
              <div className="h-full flex flex-col items-center justify-center text-center">
                 <span className="text-6xl mb-4 animate-bounce">✨</span>
                 <h1 className="text-3xl md:text-4xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-                  Halo Dylan, mau cari data apa hari ini?
+                  Halo User, mau cari data apa hari ini?
                 </h1>
-                <p className="text-gray-500 mt-3 text-sm">Upload file di samping untuk mulai bertanya pada AI.</p>
+                <p className="text-gray-500 mt-3 text-sm">Upload file ada di samping untuk mulai bertanya.</p>
              </div>
           ) : (
             chat.map((msg, index) => (
@@ -164,7 +171,7 @@ export default function GeminiClone() {
                   {msg.role === "ai" && (
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-blue-400">✨</span>
-                      <span className="font-bold text-sm text-blue-400 uppercase tracking-tight">AI Perusahaan</span>
+                      <span className="font-bold text-sm text-blue-400 uppercase tracking-tight">Search Engine</span>
                     </div>
                   )}
                   {msg.text}
@@ -185,7 +192,7 @@ export default function GeminiClone() {
           <div className="w-full max-w-3xl bg-[#1e1f20] rounded-[28px] p-1.5 px-6 flex items-center shadow-2xl border border-gray-700 focus-within:border-gray-500 transition-all">
             <input 
               className="bg-transparent flex-1 outline-none py-3 text-gray-200 placeholder-gray-500" 
-              placeholder="Tanya apapun tentang dokumen perusahaan..."
+              placeholder="Tanya apapun tentang dokumen..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendQuery()}
