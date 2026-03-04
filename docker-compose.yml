@@ -6,8 +6,20 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    restart: unless-stopped
 
-  
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma 
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
   backend:
     build: ./backend
     container_name: company_backend
@@ -17,8 +29,11 @@ services:
       - ./backend/uploads:/app/uploads
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
     depends_on:
       - ollama
+      - chromadb
 
 
   frontend:
@@ -33,3 +48,4 @@ services:
 
 volumes:
   ollama_data:
+

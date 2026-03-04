@@ -103,101 +103,87 @@ async def upload_file(file: UploadFile = File(...)):
 @app.post("/ask")
 async def ask_ai(question: dict):
     tanya = question.get("query")
-    docs = []
+    if not tanya:
+        raise HTTPException(status_code=400, detail="Query is required")
 
-    intent_prompt = (
-        "TUGAS: Tentukan apakah user ingin MENGHITUNG JUMLAH KATA atau MEMBACA ISI/DISKUSI.\n\n"
-        f"PERTANYAAN USER: '{tanya}'\n\n"
-        "KLASIFIKASI:\n"
-        "- Jawab 'HITUNG' jika user bertanya: 'berapa jumlah', 'hitung ada berapa', 'berapa kali muncul'.\n"
-        "- Jawab 'RAG' jika user bertanya: 'apa isi', 'jelaskan', 'ringkas', 'siapa', 'kapan', atau pertanyaan diskusi lainnya.\n\n"
-        "JAWABAN:"
-    )
-    is_counting_raw = llm.invoke(intent_prompt).strip().upper()
-    is_counting = "HITUNG" in is_counting_raw
+    tanya_lower = tanya.lower()
 
-    if is_counting:
-        extraction_prompt = (
-            f"TUGAS: Ekstrak subjek dan file dari: '{tanya}'\n"
-            "HANYA balas dengan format: subjek|file\n"
-            "CONTOH: halo|halo1.txt\n"
-            "Jangan beri penjelasan atau kode Python. Beri hasilnya saja."
-            "peraturan penting"
-            "1. Tentukan subjek kata yang dicari. Perhatikan jumlah hurufnya (misal: 'halo' vs 'hallo').\n"
-            "2. Berikan hasil dalam format: subjek|file\n"
-            "3. JANGAN mengulang jawaban dari percakapan sebelumnya jika subjeknya berbeda.\n"
-            "HANYA balas dengan format: subjek|file"
-        )
-        extraction_result = llm.invoke(extraction_prompt).strip()
-        
+    
+    # INTENT DETECTION (RULE-BASED, BUKAN LLM)
+
+    if re.search(r"\b(hitung|jumlah|total|berapa kali)\b", tanya_lower):
+        intent = "HITUNG"
+    else:
+        intent = "RAG"
+
+    # LOGIC UNTUK HITUNG 
+    if intent == "HITUNG":
         try:
-            clean_res = extraction_result.split("\n")[-1]
-            
-            if "|" in clean_res:
-                target_word, target_file = clean_res.split("|")
-                
-                target_word = target_word.strip().replace('"', '').replace("'", "")
-                target_file = target_file.strip().replace('"', '').replace("'", "").replace(" ", "")
+            word_match = re.search(r"kata\s+['\"]?(\w+)['\"]?", tanya_lower)
+            file_match = re.search(r"di\s+file\s+([^\s]+)", tanya_lower)
 
-                if target_word.lower() in ["subjek", "kata", "target"]:
-                    raise ValueError("LLM gagal mengekstrak kata asli")
-                
-                if target_file.endswith("."): 
-                    target_file = target_file[:-1]
-                
-                files_to_scan = os.listdir("uploads") if target_file.upper() == "ALL" else [target_file]
+            if not word_match:
+                return {"answer": "Format tidak dikenali. Gunakan contoh: 'Hitung kata AI di file laporan.pdf'", "sources": []}
 
-                total_count = 0
-                detail_per_file = []
-                for f_name in files_to_scan:
-                    if os.path.exists(f"uploads/{f_name}"):
-                        c = count_word_in_file(f_name, target_word)
-                        total_count += c
-                        detail_per_file.append(f"{f_name}: {c}")
+            target_word = word_match.group(1)
 
-                return {
-                    "answer": f"Berdasarkan pencarian langsung di file, total kata '{target_word}' muncul sebanyak {total_count} kali.",
-                    "detail": detail_per_file,
-                    "sources": files_to_scan
-                }
+            if file_match:
+                files_to_scan = [file_match.group(1)]
+            else:
+                files_to_scan = [
+                    f for f in os.listdir("uploads")
+                    if os.path.isfile(f"uploads/{f}")
+                ]
+
+            total_count = 0
+            detail_per_file = []
+
+            for f_name in files_to_scan:
+                if os.path.exists(f"uploads/{f_name}"):
+                    c = count_word_in_file(f_name, target_word)
+                    total_count += c
+                    detail_per_file.append(f"{f_name}: {c}")
+
+            return {
+                "answer": f"Kata '{target_word}' muncul {total_count} kali.",
+                "detail": detail_per_file,
+                "sources": files_to_scan
+            }
+
         except Exception as e:
-            print(f"DEBUG ERROR: {e} | Raw Result: {extraction_result}")
-            pass    
-    try:
-        docs_with_score = vector_db.similarity_search_with_relevance_scores(tanya, k=10)
-        
-        for doc, score in docs_with_score:
-            print(f"File: {doc.metadata.get('source')} | Score: {score}")
+            return {"answer": f"Terjadi kesalahan: {str(e)}", "sources": []}
 
-        docs = [doc for doc, score in docs_with_score if score > 0.1]
     
-        if not docs and docs_with_score:
-            docs = [doc for doc, score in docs_with_score[:3]]
-            
+    # LOGICNYA RAG (SEMANTIC SEARCH + LLM)
+    try:
+        docs_with_score = vector_db.similarity_search_with_relevance_scores(tanya, k=5)
+
+        docs = [doc for doc, score in docs_with_score if score > 0.05]
+
+        if not docs:
+            return {"answer": "Informasi tidak ditemukan di dokumen.", "sources": []}
+
+        konteks = "\n\n".join(
+            [f"--- Sumber: {d.metadata.get('source')} ---\n{d.page_content}" for d in docs]
+        )
+
+        sumber_file = list(set([d.metadata.get("source", "Unknown") for d in docs]))
+
+        rag_prompt = f"""
+        Anda adalah asisten AI perusahaan yang profesional dan akurat.
+        Gunakan HANYA data dokumen di bawah ini untuk menjawab pertanyaan.
+
+        DATA DOKUMEN:
+        {konteks}
+
+        Pertanyaan: {tanya}
+
+        Jawaban (sebutkan nama dokumen yang dirujuk):
+        """
+
+        response = llm.invoke(rag_prompt)
+
+        return {"answer": response, "sources": sumber_file}
+
     except Exception as e:
-        print(f"Error: {e}")
-        return {"answer": "Database belum siap atau kosong. Silakan upload file dulu.", "sources": []}
-    
-    if not docs:
-        return {"answer": "Saya tidak menemukan informasi terkait di dokumen yang ada.", "sources": []}
-    
-    konteks = "\n\n".join([f"--- Sumber: {d.metadata.get('source')} ---\n{d.page_content}" for d in docs])
-    sumber_file = list(set([d.metadata.get("source", "Tidak diketahui") for d in docs]))
-    
-    prompt = (
-        f"Anda adalah asisten AI perusahaan yang profesional.\n"
-        f"Anda adalah sistem AI yang sangat teliti. gunakan data di bawah untuk menjawab.\n "
-        f"TUGAS: Jika user meminta untuk menghitung kata atau mencari informasi spesifik,"
-        f"periksa data dokumen dengan saksama.\n\n"
-        f"Jika user meminta menghitung jumlah kata tertentu, hitunglah secara teliti hanya dari teks yang disediakan di atas.\n"
-        f"Diberikan potongan teks dari dokumen '{sumber_file}' di bawah ini.\n"
-        f"Tugas Anda: Jawab pertanyaan user. Jika pertanyaan menanyakan isi dokumen, berikan ringkasan berdasarkan potongan teks yang tersedia.\n\n"
-        f"Jika ada informasi yang mendekati atau terkait, jelaskan dengan detail.\n\n"
-        f"DATA DOKUMEN:\n{konteks}\n\n"
-        f"Pertanyaan: {tanya}\n"
-        f"Jawaban (sebutkan nama dokumen yang dirujuk):"
-    )
-    print(f"Konteks: {konteks}")
-    response = llm.invoke(prompt)
-    
-    return {"answer": response, "sources": sumber_file, "konteks": konteks}
+        return {"answer": f"Error sistem: {str(e)}", "sources": []}
